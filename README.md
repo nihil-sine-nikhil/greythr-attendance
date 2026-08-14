@@ -1,5 +1,12 @@
 # greytHR Attendance Bot 🕐
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-5FA04E?logo=node.js&logoColor=white)](https://nodejs.org)
+[![Browser: Browserbase](https://img.shields.io/badge/browser-Browserbase-F5A623)](https://browserbase.com)
+[![Driven by: Stagehand](https://img.shields.io/badge/driven%20by-Stagehand%20v4-8A63D2)](https://github.com/browserbase/stagehand)
+[![Schedule: GitHub Actions](https://img.shields.io/badge/schedule-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](.github/workflows/attendance.yml)
+[![Use this template](https://img.shields.io/badge/Use%20this-template-24292e?logo=github)](https://github.com/nihil-sine-nikhil/greythr-attendance/generate)
+
 Marks your attendance on [greytHR](https://www.greythr.com/) for you — **Sign
 In** in the morning, **Sign Out** in the evening — on a weekday schedule, with
 your laptop closed.
@@ -57,6 +64,60 @@ you can watch live or scrub through afterwards, and saves a screenshot
 > 🔒 `.env` holds your password. It's git-ignored — never commit it. Note that
 > the Browserbase session replay records the login being typed, so treat replay
 > links as sensitive too.
+
+---
+
+## Setting this up with a coding agent
+
+Using Claude Code, Cursor, Copilot, Codex or similar? Paste the prompt below.
+There's also an [`AGENTS.md`](AGENTS.md) in the repo that most agents read on
+their own.
+
+<details>
+<summary><b>Copy this prompt</b></summary>
+
+```text
+Set up the greytHR attendance bot from
+https://github.com/nihil-sine-nikhil/greythr-attendance for me.
+
+Do this:
+1. Create a PRIVATE repo from that template (it's a GitHub template repo), and
+   clone it. It must be private — a public repo exposes Actions logs and
+   artifacts, and this uploads a screenshot of my HR dashboard.
+2. Run `npm install`. Check I'm on Node 22+ and tell me if I'm not.
+3. Create .env from .env.example. Fill in GREYTHR_SUBDOMAIN. Then STOP and ask
+   me to type my greytHR username and password into .env myself — do not ask
+   me to paste them into chat, and do not put them in any file you'd commit.
+4. Run `npm run signout:dry`. This logs in and locates the attendance button
+   without clicking. Show me the matched element and the replay link, and
+   confirm the selector is inside the attendance card (look for
+   `gt-attendance-info` in the xpath), NOT the header logout icon.
+5. Ask me what times I want, then run
+   `npm run cron -- <signin> <signout> <my IANA timezone>`
+   and paste both lines into .github/workflows/attendance.yml — updating the
+   SIGNIN_CRON / SIGNOUT_CRON values in the "Decide mode" step to match.
+6. Push, then add repo secrets BROWSERBASE_API_KEY, GREYTHR_USERNAME,
+   GREYTHR_PASSWORD and the variable GREYTHR_SUBDOMAIN. Set the secrets by
+   piping from .env so the values are never printed to the terminal.
+7. Trigger the workflow manually with dry_run=true and show me the result.
+
+Rules:
+- Never commit .env, and never print my password or API key.
+- Don't do a real (non-dry) click without asking me first — it writes to my
+  actual attendance record.
+- If something fails, open the Browserbase replay link before guessing.
+```
+
+</details>
+
+**Two things worth telling your agent explicitly**, because they're the
+mistakes that actually happen:
+
+- **Don't hand it your password in chat.** Have it stop and let you type the
+  credentials into `.env` yourself. Anything you paste into a chat lives in
+  that transcript.
+- **Dry run before a real click.** `--dry-run` proves the targeting without
+  writing to your attendance record. A real click is a real HR record.
 
 ---
 
@@ -191,6 +252,7 @@ reading the log.
 | `greythr-attendance.mjs` | The automation script |
 | `scripts/cron-times.mjs` | Converts local times to UTC cron lines |
 | `.github/workflows/attendance.yml` | The weekday cloud schedule |
+| `AGENTS.md` | Setup notes and guardrails for AI coding agents |
 | `.env.example` | Config template |
 | `.env` | Your real config (git-ignored, you create it) |
 

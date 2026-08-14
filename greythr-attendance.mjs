@@ -23,6 +23,7 @@
 
 import "dotenv/config";
 import { writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { Stagehand, browserbase } from "@browserbasehq/stagehand";
 
 const ARGS = process.argv.slice(2);
@@ -101,6 +102,81 @@ function requireEnv() {
   }
 }
 
+// Days off are decided in your own timezone, not the runner's UTC.
+const SCHEDULE_TZ = process.env.SCHEDULE_TZ || "Asia/Kolkata";
+
+/** Today's date as YYYY-MM-DD in the given timezone. */
+function todayIn(tz) {
+  // en-CA formats as YYYY-MM-DD, which is what we want to compare against.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/**
+ * Days to sit out — for leave, WFH, holidays, or an indefinite pause.
+ *
+ * Two sources, merged:
+ *   SKIP_DATES  env var / GitHub repo variable — comma or newline separated
+ *   skip-dates.txt  a file, if you'd rather commit it (SKIP_FILE to relocate)
+ *
+ * Each entry is one of:
+ *   2026-08-20                 a single day
+ *   2026-08-20..2026-08-25     an inclusive range
+ *   PAUSE                      stop entirely until removed
+ *
+ * `#` starts a comment. Prefer the env var over the file if your repo is
+ * public — a committed file publishes your leave calendar.
+ */
+function loadSkipRules() {
+  const raw = [];
+
+  if (process.env.SKIP_DATES) raw.push(...process.env.SKIP_DATES.split(/[,\n]/));
+
+  const file = process.env.SKIP_FILE || "skip-dates.txt";
+  if (existsSync(file)) raw.push(...readFileSync(file, "utf8").split("\n"));
+
+  if (/^(1|true|yes|on)$/i.test(process.env.PAUSED || "")) raw.push("PAUSE");
+
+  const rules = [];
+  for (const line of raw) {
+    const entry = line.split("#")[0].trim();
+    if (!entry) continue;
+
+    if (/^pause[d]?$/i.test(entry)) {
+      rules.push({ kind: "pause" });
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(entry)) {
+      rules.push({ kind: "day", from: entry, to: entry });
+    } else if (/^\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}$/.test(entry)) {
+      const [from, to] = entry.split("..");
+      // Tolerate a backwards range rather than silently never matching.
+      rules.push(from <= to ? { kind: "range", from, to } : { kind: "range", from: to, to: from });
+    } else {
+      console.warn(
+        `  ⚠ Ignoring unrecognised skip entry "${entry}" — expected ` +
+          `YYYY-MM-DD, YYYY-MM-DD..YYYY-MM-DD, or PAUSE.`
+      );
+    }
+  }
+  return rules;
+}
+
+/** Why we're sitting today out, or null to proceed. ISO dates compare as strings. */
+function skipReason(today, rules) {
+  for (const r of rules) {
+    if (r.kind === "pause") return "paused (PAUSE is set — remove it to resume)";
+    if (today >= r.from && today <= r.to) {
+      return r.from === r.to
+        ? `${today} is marked as a day off`
+        : `${today} falls in the range ${r.from}..${r.to}`;
+    }
+  }
+  return null;
+}
+
 /**
  * Browserbase needs a projectId to open a session, but you shouldn't have to
  * look it up by hand — your API key already identifies your account. So ask
@@ -144,6 +220,15 @@ async function run() {
       (DRY_RUN ? "  (dry run — will not click)" : "")
   );
   console.log(`  Portal: ${PORTAL_URL}`);
+
+  // Check this before opening a browser — a skipped day should cost nothing.
+  const today = todayIn(SCHEDULE_TZ);
+  const reason = skipReason(today, loadSkipRules());
+  if (reason) {
+    console.log(`\n  ⏭ Skipping: ${reason}.`);
+    console.log(`     (today is ${today} in ${SCHEDULE_TZ})\n`);
+    return;
+  }
 
   const projectId = await resolveProjectId();
 
@@ -245,13 +330,22 @@ async function run() {
         console.log(`  ✓ "${buttonLabel}" clicked.`);
 
         // Confirm the toggle actually flipped, so a silent miss can't look
-        // like success.
-        const after = await stagehand.observe(
-          `a button labelled exactly "${flippedLabel}" inside the attendance ` +
-            `card (the card with today's date, the shift name and the ` +
-            `running clock). Return nothing if no such button is there.`,
-          { page }
-        );
+        // like success. Retry once: the card can lag behind the click, and a
+        // single observe occasionally comes back empty on a button that is
+        // plainly there. A false alarm here fails the scheduled run and
+        // emails you about a swipe that actually worked, so it's worth the
+        // extra few seconds to be sure.
+        let after = { data: [] };
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          after = await stagehand.observe(
+            `a button labelled exactly "${flippedLabel}" inside the attendance ` +
+              `card (the card with today's date, the shift name and the ` +
+              `running clock). Return nothing if no such button is there.`,
+            { page }
+          );
+          if (after.data.length > 0) break;
+          if (attempt === 1) await page.waitForTimeout(4000);
+        }
 
         if (after.data.length > 0) {
           console.log(

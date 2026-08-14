@@ -54,6 +54,17 @@ description guard before the click. Keep both if you touch that code.
 Tenants using other labels ("Clock In", "Punch In") are handled by
 `GREYTHR_SIGNIN_LABEL` / `GREYTHR_SIGNOUT_LABEL` — no code change needed.
 
+## Days off
+
+`SKIP_DATES` (repo variable or env) and an optional `skip-dates.txt` list days
+to sit out: `2026-08-20`, `2026-08-20..2026-08-25`, or `PAUSE`. Dates are
+compared in `SCHEDULE_TZ` (default `Asia/Kolkata`), **not** the runner's UTC —
+a sign-out near midnight UTC would otherwise check the wrong date. The gate
+runs before any browser session is opened; a skipped day must cost nothing.
+
+Keep skip entries out of committed files when the repo is public — the
+variable exists so a leave calendar isn't published.
+
 ## Commands
 
 ```bash
@@ -61,6 +72,8 @@ npm install
 npm run signout:dry            # locate the button, report, don't click
 npm run signin                 # real swipe — writes to the HR record
 npm run cron -- 09:05 17:15 Asia/Kolkata   # UTC cron lines for the workflow
+npm run skip -- tomorrow       # sit tomorrow out
+npm run skip                   # show what's skipped
 ```
 
 ## Scheduling

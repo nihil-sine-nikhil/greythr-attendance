@@ -171,6 +171,35 @@ In" — set `GREYTHR_SIGNIN_LABEL` / `GREYTHR_SIGNOUT_LABEL` in `.env`.
 
 ---
 
+## Taking a day off
+
+Working from home, on leave, or it's a holiday? Tell it to sit that day out:
+
+```bash
+npm run skip -- tomorrow              # not going in tomorrow
+npm run skip -- 2026-10-02            # a holiday
+npm run skip -- 2026-12-24..2026-12-31   # on leave for a week
+npm run skip -- pause                 # stop entirely
+npm run skip -- resume                # start again
+npm run skip                          # show what's currently skipped
+```
+
+That writes to the `SKIP_DATES` repository variable via the GitHub CLI, so
+your leave calendar lives in repo settings rather than in a committed file —
+which matters if you also push this code somewhere public. You can equally set
+`SKIP_DATES` by hand under *Settings → Secrets and variables → Actions →
+Variables*, as a comma-separated list.
+
+Skipped days are decided in **your** timezone (`SCHEDULE_TZ`, default
+`Asia/Kolkata`), not the runner's UTC — otherwise a late-evening sign-out
+would compare against the wrong date. The check happens before a browser
+session is opened, so a day off costs nothing.
+
+Prefer a file? Put the same entries in `skip-dates.txt`, one per line, `#` for
+comments. Both sources are merged.
+
+---
+
 ## Run it unattended
 
 The script has to run *somewhere that's on at the scheduled time*.
@@ -258,6 +287,7 @@ reading the log.
 |---|---|
 | `greythr-attendance.mjs` | The automation script |
 | `scripts/cron-times.mjs` | Converts local times to UTC cron lines |
+| `scripts/skip.mjs` | Marks days off (`npm run skip`) |
 | `.github/workflows/attendance.yml` | The weekday cloud schedule |
 | `AGENTS.md` | Setup notes and guardrails for AI coding agents |
 | `.env.example` | Config template |

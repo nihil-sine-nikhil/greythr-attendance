@@ -21,7 +21,8 @@
     "signout": "node greythr-attendance.mjs signout",
     "signin:dry": "node greythr-attendance.mjs signin --dry-run",
     "signout:dry": "node greythr-attendance.mjs signout --dry-run",
-    "cron": "node scripts/cron-times.mjs"
+    "cron": "node scripts/cron-times.mjs",
+    "skip": "node scripts/skip.mjs"
   },
   "dependencies": {
     "@browserbasehq/stagehand": "^4.0.1",

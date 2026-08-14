@@ -14,8 +14,8 @@ name: greytHR attendance
 # ──────────────────────────────────────────────────────────────────────────
 on:
   schedule:
-    - cron: "35 3 * * 1-5"   # 09:05 Asia/Kolkata, Mon–Fri — Sign In
-    - cron: "45 11 * * 1-5"  # 17:15 Asia/Kolkata, Mon–Fri — Sign Out
+    - cron: "35 3 * * 1-6"   # 09:05 Asia/Kolkata, Mon–Sat — Sign In
+    - cron: "45 11 * * 1-6"  # 17:15 Asia/Kolkata, Mon–Sat — Sign Out
   workflow_dispatch:
     inputs:
       mode:
@@ -67,8 +67,8 @@ jobs:
       - name: Decide mode
         id: mode
         env:
-          SIGNIN_CRON: "35 3 * * 1-5"
-          SIGNOUT_CRON: "45 11 * * 1-5"
+          SIGNIN_CRON: "35 3 * * 1-6"
+          SIGNOUT_CRON: "45 11 * * 1-6"
           FIRED: ${{ github.event.schedule }}
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
@@ -95,6 +95,11 @@ jobs:
           # Only needed if your tenant labels the toggle something unusual.
           GREYTHR_SIGNIN_LABEL: ${{ vars.GREYTHR_SIGNIN_LABEL }}
           GREYTHR_SIGNOUT_LABEL: ${{ vars.GREYTHR_SIGNOUT_LABEL }}
+          # Days off — set with `npm run skip`, or by hand under
+          # Settings → Secrets and variables → Actions → Variables.
+          SKIP_DATES: ${{ vars.SKIP_DATES }}
+          PAUSED: ${{ vars.PAUSED }}
+          SCHEDULE_TZ: ${{ vars.SCHEDULE_TZ }}
         run: |
           node greythr-attendance.mjs "${{ steps.mode.outputs.mode }}" \
             ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}

@@ -20,6 +20,13 @@ differently, and a selector scraped from one won't survive on another.
 Works on any greytHR tenant. Runs free: Browserbase's free tier covers both the
 browser and the AI, and GitHub Actions provides the schedule.
 
+![A dry run: the bot logs in, locates the attendance Sign Out button inside the
+attendance card, prints the matched element and its selector, and stops without
+clicking](docs/demo.gif)
+
+<sub>A `--dry-run`: logs in, finds the button, shows you what it matched — and
+stops before clicking. Tenant and session id are masked.</sub>
+
 ---
 
 ## Quick start

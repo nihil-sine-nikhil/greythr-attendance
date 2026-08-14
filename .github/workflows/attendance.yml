@@ -1,0 +1,110 @@
+name: greytHR attendance
+
+# ─── SET YOUR TIMES HERE ──────────────────────────────────────────────────
+# These are UTC — GitHub cron has no timezone option. To get the two lines
+# for your local times, run:
+#
+#     npm run cron -- 09:05 17:15 Asia/Kolkata
+#
+# and paste its output over the two `cron:` lines below.
+#
+# Heads-up: GitHub's scheduler is best-effort. Under load a run can start
+# several minutes (occasionally 15+) after the scheduled time, and rarely it
+# is skipped. Use "Run workflow" below if you ever need an exact stamp.
+# ──────────────────────────────────────────────────────────────────────────
+on:
+  schedule:
+    - cron: "35 3 * * 1-5"   # 09:05 Asia/Kolkata, Mon–Fri — Sign In
+    - cron: "45 11 * * 1-5"  # 17:15 Asia/Kolkata, Mon–Fri — Sign Out
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Which swipe to perform"
+        required: true
+        default: signin
+        type: choice
+        options: [signin, signout]
+      dry_run:
+        description: "Find the button but do not click it"
+        required: false
+        default: false
+        type: boolean
+
+# Never let a sign-in and a sign-out overlap.
+concurrency:
+  group: greythr-attendance
+  cancel-in-progress: false
+
+jobs:
+  swipe:
+    # An unconfigured copy of this repo (the public template, a fresh fork)
+    # would otherwise fail its schedule every weekday and email about it.
+    # Manual runs always proceed, so you get the script's own clear message
+    # about what's missing. Note: the `secrets` context isn't available here,
+    # so this keys off the variable instead.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      vars.GREYTHR_SUBDOMAIN != '' ||
+      vars.GREYTHR_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22+, not 20: Stagehand v4 opens its CDP connection with the global
+      # WebSocket, which Node 20 does not have.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # A scheduled run knows which swipe it is from the cron line that fired;
+      # a manual run takes it from the dropdown above. If you edit the cron
+      # expressions, edit these two to match — they are compared literally.
+      - name: Decide mode
+        id: mode
+        env:
+          SIGNIN_CRON: "35 3 * * 1-5"
+          SIGNOUT_CRON: "45 11 * * 1-5"
+          FIRED: ${{ github.event.schedule }}
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            case "$FIRED" in
+              "$SIGNIN_CRON")  echo "mode=signin"  >> "$GITHUB_OUTPUT" ;;
+              "$SIGNOUT_CRON") echo "mode=signout" >> "$GITHUB_OUTPUT" ;;
+              *)
+                echo "::error::Schedule '$FIRED' matches neither SIGNIN_CRON nor SIGNOUT_CRON. Update the 'Decide mode' step to match your cron lines."
+                exit 1 ;;
+            esac
+          else
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mark attendance
+        env:
+          BROWSERBASE_API_KEY: ${{ secrets.BROWSERBASE_API_KEY }}
+          GREYTHR_USERNAME: ${{ secrets.GREYTHR_USERNAME }}
+          GREYTHR_PASSWORD: ${{ secrets.GREYTHR_PASSWORD }}
+          # Set GREYTHR_SUBDOMAIN under Settings → Secrets and variables →
+          # Actions → Variables. GREYTHR_URL is only for non-standard portals.
+          GREYTHR_SUBDOMAIN: ${{ vars.GREYTHR_SUBDOMAIN }}
+          GREYTHR_URL: ${{ vars.GREYTHR_URL }}
+          # Only needed if your tenant labels the toggle something unusual.
+          GREYTHR_SIGNIN_LABEL: ${{ vars.GREYTHR_SIGNIN_LABEL }}
+          GREYTHR_SIGNOUT_LABEL: ${{ vars.GREYTHR_SIGNOUT_LABEL }}
+        run: |
+          node greythr-attendance.mjs "${{ steps.mode.outputs.mode }}" \
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
+
+      # Proof of what happened, kept for a week. Download it from the run page.
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attendance-${{ steps.mode.outputs.mode }}-${{ github.run_id }}
+          path: attendance-*.png
+          retention-days: 7
+          if-no-files-found: warn

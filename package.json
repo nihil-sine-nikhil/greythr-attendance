@@ -1,0 +1,33 @@
+{
+  "name": "greythr-attendance-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Unattended greytHR attendance sign-in / sign-out, driven by Browserbase + Stagehand",
+  "keywords": [
+    "greythr",
+    "attendance",
+    "automation",
+    "browserbase",
+    "stagehand"
+  ],
+  "license": "MIT",
+  "bin": {
+    "greythr-attendance": "greythr-attendance.mjs"
+  },
+  "scripts": {
+    "start": "node greythr-attendance.mjs",
+    "signin": "node greythr-attendance.mjs signin",
+    "signout": "node greythr-attendance.mjs signout",
+    "signin:dry": "node greythr-attendance.mjs signin --dry-run",
+    "signout:dry": "node greythr-attendance.mjs signout --dry-run",
+    "cron": "node scripts/cron-times.mjs"
+  },
+  "dependencies": {
+    "@browserbasehq/stagehand": "^4.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

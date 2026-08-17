@@ -6,16 +6,27 @@ name: greytHR attendance
 #
 #     npm run cron -- 09:05 17:15 Asia/Kolkata
 #
-# and paste its output over the two `cron:` lines below.
+# It prints both the cron lines and the SIGNIN_CRONS / SIGNOUT_CRONS values
+# further down. Replace both — they are compared literally, and a mismatch
+# fails the run rather than guessing.
 #
-# Heads-up: GitHub's scheduler is best-effort. Under load a run can start
-# several minutes (occasionally 15+) after the scheduled time, and rarely it
-# is skipped. Use "Run workflow" below if you ever need an exact stamp.
+# Heads-up: GitHub's scheduler is best-effort. Runs start late — half an hour
+# is not unusual — and occurrences are sometimes dropped outright. That is
+# what the retries below are for. Use "Run workflow" if you need it now.
 # ──────────────────────────────────────────────────────────────────────────
 on:
   schedule:
+    # Three attempts each, 15 minutes apart. GitHub's scheduler runs late and
+    # sometimes drops an occurrence entirely, and one missed morning means a
+    # lost day of attendance. Retries are safe because the attendance card is
+    # a single toggle: once you're signed in there is no "Sign In" button to
+    # find, so a later attempt no-ops instead of double-marking.
     - cron: "35 3 * * 1-5"   # 09:05 Asia/Kolkata, Mon–Fri — Sign In
+    - cron: "50 3 * * 1-5"   # 09:20   retry
+    - cron: "5 4 * * 1-5"    # 09:35   retry
     - cron: "45 11 * * 1-5"  # 17:15 Asia/Kolkata, Mon–Fri — Sign Out
+    - cron: "0 12 * * 1-5"   # 17:30   retry
+    - cron: "15 12 * * 1-5"  # 17:45   retry
   workflow_dispatch:
     inputs:
       mode:
@@ -63,21 +74,25 @@ jobs:
 
       # A scheduled run knows which swipe it is from the cron line that fired;
       # a manual run takes it from the dropdown above. If you edit the cron
-      # expressions, edit these two to match — they are compared literally.
+      # expressions, edit these to match — they are compared literally.
       - name: Decide mode
         id: mode
         env:
-          SIGNIN_CRON: "35 3 * * 1-5"
-          SIGNOUT_CRON: "45 11 * * 1-5"
+          # Semicolon-separated, and must match the cron lines above exactly.
+          SIGNIN_CRONS: "35 3 * * 1-5;50 3 * * 1-5;5 4 * * 1-5"
+          SIGNOUT_CRONS: "45 11 * * 1-5;0 12 * * 1-5;15 12 * * 1-5"
           FIRED: ${{ github.event.schedule }}
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            case "$FIRED" in
-              "$SIGNIN_CRON")  echo "mode=signin"  >> "$GITHUB_OUTPUT" ;;
-              "$SIGNOUT_CRON") echo "mode=signout" >> "$GITHUB_OUTPUT" ;;
+            case ";$SIGNIN_CRONS;" in
+              *";$FIRED;"*) echo "mode=signin" >> "$GITHUB_OUTPUT" ;;
               *)
-                echo "::error::Schedule '$FIRED' matches neither SIGNIN_CRON nor SIGNOUT_CRON. Update the 'Decide mode' step to match your cron lines."
-                exit 1 ;;
+                case ";$SIGNOUT_CRONS;" in
+                  *";$FIRED;"*) echo "mode=signout" >> "$GITHUB_OUTPUT" ;;
+                  *)
+                    echo "::error::Schedule '$FIRED' is in neither SIGNIN_CRONS nor SIGNOUT_CRONS. Update the 'Decide mode' step to match your cron lines."
+                    exit 1 ;;
+                esac ;;
             esac
           else
             echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"

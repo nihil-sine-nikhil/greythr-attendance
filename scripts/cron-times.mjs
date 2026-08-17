@@ -85,8 +85,23 @@ function toCron({ h, min }) {
 
 const signin = parseHHMM(signinArg, "sign-in time");
 const signout = parseHHMM(signoutArg, "sign-out time");
-const a = toCron(signin);
-const b = toCron(signout);
+
+// Three attempts each, 15 minutes apart. GitHub's scheduler runs late and
+// sometimes drops an occurrence outright; retries are free because the
+// attendance toggle no-ops once the day is already marked.
+const RETRY_OFFSETS = [0, 15, 30];
+const shift = ({ h, min }, plus) => {
+  const t = h * 60 + min + plus;
+  return { h: Math.floor((t % 1440) / 60), min: t % 60 };
+};
+
+const label = (t, plus) => {
+  const s = shift(t, plus);
+  return `${String(s.h).padStart(2, "0")}:${String(s.min).padStart(2, "0")}`;
+};
+
+const a = RETRY_OFFSETS.map((o) => toCron(shift(signin, o)));
+const b = RETRY_OFFSETS.map((o) => toCron(shift(signout, o)));
 
 const sign = offset >= 0 ? "+" : "-";
 const abs = Math.abs(offset);
@@ -94,11 +109,32 @@ console.log(
   `\n${TZ} is UTC${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:` +
     `${String(abs % 60).padStart(2, "0")} on ${probe.toISOString().slice(0, 10)}\n`
 );
-console.log(`Paste into .github/workflows/attendance.yml:\n`);
-console.log(`    - cron: "${a.cron}"   # ${signinArg} ${TZ}, Mon–Fri — Sign In`);
-console.log(`    - cron: "${b.cron}"   # ${signoutArg} ${TZ}, Mon–Fri — Sign Out`);
 
-if (a.dayShift || b.dayShift) {
+console.log(`Paste over the cron lines in .github/workflows/attendance.yml:\n`);
+a.forEach((c, i) =>
+  console.log(
+    `    - cron: "${c.cron}"`.padEnd(30) +
+      (i === 0
+        ? `# ${label(signin, 0)} ${TZ}, Mon–Fri — Sign In`
+        : `# ${label(signin, RETRY_OFFSETS[i])}   retry`)
+  )
+);
+b.forEach((c, i) =>
+  console.log(
+    `    - cron: "${c.cron}"`.padEnd(30) +
+      (i === 0
+        ? `# ${label(signout, 0)} ${TZ}, Mon–Fri — Sign Out`
+        : `# ${label(signout, RETRY_OFFSETS[i])}   retry`)
+  )
+);
+
+// These must stay in lockstep with the cron lines — the workflow compares
+// them literally and fails the run if a fired schedule matches neither.
+console.log(`\nAnd over the two env values in the "Decide mode" step:\n`);
+console.log(`          SIGNIN_CRONS: "${a.map((c) => c.cron).join(";")}"`);
+console.log(`          SIGNOUT_CRONS: "${b.map((c) => c.cron).join(";")}"`);
+
+if (a.some((c) => c.dayShift) || b.some((c) => c.dayShift)) {
   console.log(
     `\n⚠ One of these crosses midnight UTC, so the UTC weekday differs from\n` +
       `  your local one. "1-5" here means Mon–Fri *in UTC* — double-check the\n` +

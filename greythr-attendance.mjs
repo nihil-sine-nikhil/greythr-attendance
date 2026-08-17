@@ -309,6 +309,52 @@ async function run() {
       console.log(`    → matched: ${target.description}`);
       console.log(`    → selector: ${target.selector}`);
 
+      // Read the button's real label from the page before doing anything.
+      //
+      // observe() locates the toggle by position and context, and will happily
+      // return it while echoing back whatever label was asked for — so asking
+      // for "Sign In" can hand you the button that actually reads "Sign Out".
+      // Clicking that swipes you the wrong way. The model finds the element;
+      // the DOM decides whether it is the one we want.
+      let actualLabel = null;
+      try {
+        actualLabel = (await page.locator(target.selector).innerText()).trim();
+      } catch {
+        // Fall through — an unreadable label is handled below.
+      }
+
+      if (actualLabel === null) {
+        throw new Error(
+          `Found a candidate button but could not read its label, so there is ` +
+            `no way to tell which way it would swipe. Refusing to click.`
+        );
+      }
+
+      console.log(`    → actual label on the page: "${actualLabel}"`);
+
+      const wanted = buttonLabel.replace(/\s+/g, "").toLowerCase();
+      const found = actualLabel.replace(/\s+/g, "").toLowerCase();
+
+      if (found !== wanted) {
+        // Usually this just means the day is already marked, so the toggle is
+        // showing the other state. It can also mean observe returned some
+        // other control entirely. Either way, not clicking is correct.
+        const flippedMatch =
+          found === flippedLabel.replace(/\s+/g, "").toLowerCase();
+        console.log(
+          `  ⚠ Not clicking: the button found reads "${actualLabel}", not ` +
+            `"${buttonLabel}".` +
+            (flippedMatch
+              ? ` That's the opposite state, so you are already ` +
+                `${MODE === "signin" ? "signed in" : "signed out"} for today.`
+              : ` That isn't the attendance toggle at all — check the ` +
+                `screenshot and replay link.`)
+        );
+        await writeFile(`attendance-${MODE}.png`, await page.screenshot());
+        console.log(`  Screenshot saved: attendance-${MODE}.png`);
+        return;
+      }
+
       // Refuse to click something that looks like the portal logout control
       // rather than the attendance swipe button.
       if (
@@ -329,31 +375,32 @@ async function run() {
         await page.waitForTimeout(3000);
         console.log(`  ✓ "${buttonLabel}" clicked.`);
 
-        // Confirm the toggle actually flipped, so a silent miss can't look
-        // like success. Retry once: the card can lag behind the click, and a
-        // single observe occasionally comes back empty on a button that is
-        // plainly there. A false alarm here fails the scheduled run and
-        // emails you about a swipe that actually worked, so it's worth the
-        // extra few seconds to be sure.
-        let after = { data: [] };
+        // Confirm the toggle actually flipped, reading the label off the page
+        // rather than asking the model again — same reason as above. Retry
+        // once, since the card can lag a moment behind the click.
+        let nowReads = null;
         for (let attempt = 1; attempt <= 2; attempt++) {
-          after = await stagehand.observe(
-            `a button labelled exactly "${flippedLabel}" inside the attendance ` +
-              `card (the card with today's date, the shift name and the ` +
-              `running clock). Return nothing if no such button is there.`,
-            { page }
-          );
-          if (after.data.length > 0) break;
+          try {
+            nowReads = (await page.locator(target.selector).innerText()).trim();
+          } catch {
+            nowReads = null;
+          }
+          if (nowReads && nowReads.replace(/\s+/g, "").toLowerCase() ===
+              flippedLabel.replace(/\s+/g, "").toLowerCase()) {
+            break;
+          }
           if (attempt === 1) await page.waitForTimeout(4000);
         }
 
-        if (after.data.length > 0) {
+        if (nowReads && nowReads.replace(/\s+/g, "").toLowerCase() ===
+            flippedLabel.replace(/\s+/g, "").toLowerCase()) {
           console.log(
             `  ✓ Confirmed — the attendance button now reads "${flippedLabel}".`
           );
         } else {
           console.log(
-            `  ⚠ Clicked, but the button does not now read "${flippedLabel}". ` +
+            `  ⚠ Clicked, but the button now reads ` +
+              `"${nowReads ?? "(unreadable)"}" instead of "${flippedLabel}". ` +
               `The swipe may not have registered — check the screenshot and ` +
               `the replay link above.`
           );

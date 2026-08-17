@@ -41,9 +41,19 @@ These are load-bearing. Getting any of them wrong produces a misleading error.
 ## The attendance button
 
 The card has **one toggle**: it reads `Sign In` while out, `Sign Out` while in.
-So each mode only finds its button in the state it's leaving, and running twice
-is a safe no-op rather than a double-mark. Don't "fix" a not-found button
-without first checking whether the day is simply already marked.
+Running the wrong mode is a no-op — but **only because of an explicit DOM
+check**, not because `observe()` is discriminating.
+
+`observe()` locates the toggle by position and context and echoes back the
+label you asked for. Ask for "Sign In" while the button reads "Sign Out" and it
+will return that button, described as "Sign In". Clicking it swipes the wrong
+way — this reached production and signed a user out during their workday. It
+has also returned "View Swipes" when asked for a label that didn't exist.
+
+So: `page.locator(selector).innerText()` is read before clicking, and the click
+is refused unless the real label matches. **Never remove that check, and never
+trust `ObserveResult.description` for a decision** — treat it as a hint about
+what was found, never as evidence of what it is.
 
 The correct element sits inside greytHR's `gt-attendance-info` component. The
 page header also has a **power icon that logs out of the portal** and reads

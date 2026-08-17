@@ -154,12 +154,19 @@ greytHR's attendance card has **one toggle button**, not two. It reads
 `Sign In` while you're out and `Sign Out` once you're in. So the button a given
 mode looks for only exists in the state you're trying to leave:
 
-- `signin` when you're already signed in → finds nothing, exits cleanly. It
-  can't double-mark.
+- `signin` when you're already signed in → doesn't click, exits cleanly.
 - Same for `signout` when you're already out.
 
-After clicking, the script re-checks that the label flipped, so a click that
-silently didn't register is reported as a failure instead of a success.
+**That safety comes from reading the DOM, not from the AI.** Stagehand's
+`observe()` finds the toggle by position and context, and will return it while
+describing it with whatever label you asked for — ask for "Sign In" and it can
+hand you the button that actually reads "Sign Out". Clicking that swipes you
+the wrong way. So the script reads the button's real text off the page and
+refuses to click unless it matches. The model finds the element; the DOM
+decides.
+
+The same check runs after the click to confirm the label flipped, so a swipe
+that didn't register is reported as a failure rather than a success.
 
 There's one trap it guards against: greytHR's top-right **power icon logs you
 out of the portal** and reads a lot like "sign out". The script targets the
